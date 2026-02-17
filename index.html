@@ -142,6 +142,11 @@
                 <select onchange="setTheme(this.value)" id="theme-select" class="form-input py-1.5 px-3 w-28 text-xs font-bold cursor-pointer hidden sm:block"><option value="light">Light</option><option value="midnight">Midnight</option><option value="dark">Dark</option></select>
                 <div class="h-6 w-[1px] bg-[var(--border-color)] mx-1"></div>
                 <button onclick="openAddEntry()" class="btn-primary px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm"><i class="fas fa-plus"></i> <span class="hidden sm:inline">Add</span></button>
+                
+                <button onclick="exportData()" class="btn-secondary w-9 h-9 rounded-lg flex items-center justify-center" title="Export Excel"><i class="fas fa-download"></i></button>
+                <button onclick="document.getElementById('importFile').click()" class="btn-secondary w-9 h-9 rounded-lg flex items-center justify-center" title="Import Excel"><i class="fas fa-upload"></i></button>
+                <input type="file" id="importFile" hidden onchange="importData(this)" accept=".xlsx">
+                
                 <button onclick="toggleSettings()" class="btn-secondary w-9 h-9 rounded-lg flex items-center justify-center"><i class="fas fa-cog"></i></button>
             </div>
         </header>
@@ -210,7 +215,7 @@
                     <div class="flex justify-between items-center">
                         <div>
                             <h2 class="text-xl font-bold mb-1">Compounding Simulator</h2>
-                            <p class="text-xs text-[var(--text-secondary)]">Automatic calculation with 0.1% Fee</p>
+                            <p class="text-xs text-[var(--text-secondary)]">Standard Calculation (Stages 1, 2, 3)</p>
                         </div>
                         <div class="text-right">
                              <p class="text-xs font-bold uppercase text-[var(--text-secondary)]">Total Estimated Profit</p>
@@ -321,7 +326,7 @@
 
     <script>
         // --- INITIALIZATION ---
-        let db = JSON.parse(localStorage.getItem('rashik_v38')) || { trades: [], config: { balance: 10000, theme: 'light', bdt: 125 } };
+        let db = JSON.parse(localStorage.getItem('rashik_v39')) || { trades: [], config: { balance: 10000, theme: 'light', bdt: 125 } };
         if (!db.config.bdt) db.config.bdt = 125;
         let calDate = new Date(); let chartObj = null; let isPnLVisible = true; 
         let currentFilter = 'THIS_MONTH'; let chartRange = 'ALL'; let entryType = 'Trade';
@@ -573,14 +578,19 @@
             Object.keys(weeks).sort().forEach(w => { wList.innerHTML += `<div class="flex justify-between items-center p-2 bg-[var(--input-bg)] rounded"><span class="text-xs text-[var(--text-secondary)]">Week ${parseInt(w)+1}</span><span class="text-xs font-bold ${weeks[w]>=0?'text-green-500':'text-red-500'}">${isPnLVisible ? '$'+weeks[w].toFixed(2) : '****'}</span></div>`; });
         }
 
+        // --- GROWTH PLAN LOGIC (RESTORED STAGE 1, 2, 3) ---
         function runSimulation() {
             let bal = parseFloat(document.getElementById('s1-bal').value) || 0;
-            let grandProfit = 0;
+            let startBal = bal;
+            
+            // Simulate Stage 1
             bal = simulateStage(1, bal);
+            // Simulate Stage 2
             bal = simulateStage(2, bal);
+            // Simulate Stage 3
             bal = simulateStage(3, bal);
-            let startBal = parseFloat(document.getElementById('s1-bal').value) || 0;
-            grandProfit = bal - startBal;
+            
+            let grandProfit = bal - startBal;
             document.getElementById('grand-total-profit').innerText = `$${grandProfit.toFixed(2)}`;
             document.getElementById('grand-total-bdt').innerText = `৳${Math.round(grandProfit * db.config.bdt).toLocaleString()}`;
         }
@@ -609,6 +619,39 @@
             return currentBal;
         }
 
+        // --- IMPORT / EXPORT LOGIC (FULLY RESTORED) ---
+        function exportData() {
+            if(!db.trades.length) { alert('No data to export!'); return; }
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(db.trades);
+            XLSX.utils.book_append_sheet(wb, ws, "Trades");
+            XLSX.writeFile(wb, "RashikTrades_Backup_" + new Date().toISOString().slice(0,10) + ".xlsx");
+        }
+
+        function importData(input) {
+            const file = input.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                if(jsonData && jsonData.length > 0) {
+                    if(confirm(`Found ${jsonData.length} records. Import and overwrite existing data?`)) {
+                        db.trades = jsonData;
+                        saveDB();
+                        refreshUI();
+                        alert('Data imported successfully!');
+                    }
+                }
+                input.value = ''; 
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
         // --- FORM & MODAL HANDLERS ---
         function setEntryType(t) {
             entryType = t; document.getElementById('f-entry-type').value = t;
@@ -626,12 +669,11 @@
         function resetForm(){document.getElementById('trade-form').reset(); document.getElementById('f-id').value=''; document.getElementById('f-date').valueAsDate=new Date(); setEntryType('Trade');}
         function editTrade(id) { const t = db.trades.find(x => x.id === id); if (!t) return; document.getElementById('f-id').value = t.id; document.getElementById('f-date').value = t.date; if(t.isTrade) { setEntryType('Trade'); document.getElementById('f-pair').value = t.pair.split('/')[0]; document.getElementById('f-type').value = t.type; document.getElementById('f-risk').value = t.risk; document.getElementById('f-rr').value = t.rr; document.getElementById('f-setup').value = t.setup; document.getElementById('f-keylevel').value = t.keyLevel; document.getElementById('f-sl').value = ((t.risk * 100) / t.size).toFixed(2); document.getElementById('f-result').value = t.result; calcLogic(); } else { if(t.pnl >= 0) setEntryType('Deposit'); else setEntryType('Withdrawal'); document.getElementById('f-desc').value = t.setup; document.getElementById('f-amount').value = Math.abs(t.pnl); calcWithdrawal(); } document.getElementById('modal').classList.remove('hidden'); }
         function delTrade(id){if(confirm('Delete?')){db.trades=db.trades.filter(x=>x.id!==id);saveDB();refreshUI();}}
-        function saveDB(){localStorage.setItem('rashik_v38',JSON.stringify(db));}
+        function saveDB(){localStorage.setItem('rashik_v39',JSON.stringify(db));}
         function saveSettings(){db.config.balance=parseFloat(document.getElementById('set-balance').value); saveDB(); refreshUI(); toggleSettings();}
         function toggleSettings(){document.getElementById('settings-modal').classList.toggle('hidden'); document.getElementById('set-balance').value=db.config.balance;}
-        function wipeData(){if(confirm('Reset?')){localStorage.removeItem('rashik_v38');location.reload();}}
+        function wipeData(){if(confirm('Reset?')){localStorage.removeItem('rashik_v39');location.reload();}}
         function moveMonth(n){calDate.setMonth(calDate.getMonth()+n);renderCalendar();}
-        function exportData(){/* kept simple */ const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(db.trades); XLSX.utils.book_append_sheet(wb, ws, "Trades"); XLSX.writeFile(wb, "Journal.xlsx");}
     </script>
 </body>
 </html>
