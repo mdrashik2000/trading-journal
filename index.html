@@ -326,7 +326,7 @@
 
     <script>
         // --- INITIALIZATION ---
-        let db = JSON.parse(localStorage.getItem('rashik_v39')) || { trades: [], config: { balance: 10000, theme: 'light', bdt: 125 } };
+        let db = JSON.parse(localStorage.getItem('rashik_v40')) || { trades: [], config: { balance: 10000, theme: 'light', bdt: 125 } };
         if (!db.config.bdt) db.config.bdt = 125;
         let calDate = new Date(); let chartObj = null; let isPnLVisible = true; 
         let currentFilter = 'THIS_MONTH'; let chartRange = 'ALL'; let entryType = 'Trade';
@@ -472,7 +472,7 @@
             });
         }
 
-        // --- CHART: DAILY TIME SERIES LOGIC (FLAT LINES FIX) ---
+        // --- CHART: DAILY TIME SERIES & PRIVACY FIX ---
         function filterChart(range) {
             chartRange = range;
             document.querySelectorAll('[id^="chart-btn-"]').forEach(b => b.classList.remove('chart-btn-active'));
@@ -533,7 +533,35 @@
             chartObj=new Chart(ctx,{
                 type:'line',
                 data:{ labels:labels, datasets:[{ data: dataPoints, borderColor: db.config.theme === 'dark' ? '#3b82f6' : '#6366f1', backgroundColor: grad, fill: true, tension: 0.1, pointRadius: 2, hoverRadius: 5 }] },
-                options:{ responsive: true, maintainAspectRatio: false, plugins:{legend:false, tooltip: {intersect: false, mode: 'index'}}, scales:{ x:{grid:{display:false}}, y:{grid:{color:db.config.theme==='light'?'#e5e7eb':'#334155'}} } }
+                options:{ 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    plugins:{
+                        legend:false, 
+                        tooltip: {
+                            intersect: false, 
+                            mode: 'index',
+                            callbacks: {
+                                label: function(context) {
+                                    // Privacy Check for Tooltip
+                                    return isPnLVisible ? 'Equity: $' + context.parsed.y.toFixed(2) : 'Equity: ****';
+                                }
+                            }
+                        }
+                    }, 
+                    scales:{ 
+                        x:{grid:{display:false}}, 
+                        y:{
+                            grid:{color:db.config.theme==='light'?'#e5e7eb':'#334155'},
+                            ticks: {
+                                // Privacy Check for Y-Axis
+                                callback: function(value) {
+                                    return isPnLVisible ? '$' + value : '****';
+                                }
+                            }
+                        } 
+                    } 
+                }
             });
         }
 
@@ -669,10 +697,10 @@
         function resetForm(){document.getElementById('trade-form').reset(); document.getElementById('f-id').value=''; document.getElementById('f-date').valueAsDate=new Date(); setEntryType('Trade');}
         function editTrade(id) { const t = db.trades.find(x => x.id === id); if (!t) return; document.getElementById('f-id').value = t.id; document.getElementById('f-date').value = t.date; if(t.isTrade) { setEntryType('Trade'); document.getElementById('f-pair').value = t.pair.split('/')[0]; document.getElementById('f-type').value = t.type; document.getElementById('f-risk').value = t.risk; document.getElementById('f-rr').value = t.rr; document.getElementById('f-setup').value = t.setup; document.getElementById('f-keylevel').value = t.keyLevel; document.getElementById('f-sl').value = ((t.risk * 100) / t.size).toFixed(2); document.getElementById('f-result').value = t.result; calcLogic(); } else { if(t.pnl >= 0) setEntryType('Deposit'); else setEntryType('Withdrawal'); document.getElementById('f-desc').value = t.setup; document.getElementById('f-amount').value = Math.abs(t.pnl); calcWithdrawal(); } document.getElementById('modal').classList.remove('hidden'); }
         function delTrade(id){if(confirm('Delete?')){db.trades=db.trades.filter(x=>x.id!==id);saveDB();refreshUI();}}
-        function saveDB(){localStorage.setItem('rashik_v39',JSON.stringify(db));}
+        function saveDB(){localStorage.setItem('rashik_v40',JSON.stringify(db));}
         function saveSettings(){db.config.balance=parseFloat(document.getElementById('set-balance').value); saveDB(); refreshUI(); toggleSettings();}
         function toggleSettings(){document.getElementById('settings-modal').classList.toggle('hidden'); document.getElementById('set-balance').value=db.config.balance;}
-        function wipeData(){if(confirm('Reset?')){localStorage.removeItem('rashik_v39');location.reload();}}
+        function wipeData(){if(confirm('Reset?')){localStorage.removeItem('rashik_v40');location.reload();}}
         function moveMonth(n){calDate.setMonth(calDate.getMonth()+n);renderCalendar();}
     </script>
 </body>
